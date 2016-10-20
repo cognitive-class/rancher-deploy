@@ -1,0 +1,95 @@
+version: '2'
+volumes:
+  db-data:
+services:
+  proxy:
+    image: nginx:stable
+    restart: always
+    ports:
+      - "80:80"
+      - "443:443"
+    env_file: env
+    environment:
+      DOLLAR: $$
+      RANCHER_TEMPLATE: |
+        upstream rancher-upstream {
+          server rancher:8080;
+        }
+        server {
+          listen 443 ssl;
+          server_name rancher.$${DSWB_DOMAIN};
+          include /etc/nginx/ssl/ssl.conf;
+          location / {
+            proxy_set_header Host $${DOLLAR}host;
+            proxy_set_header X-Forwarded-Proto $${DOLLAR}scheme;
+            proxy_set_header X-Forwarded-Port $${DOLLAR}server_port;
+            proxy_set_header X-Forwarded-For $${DOLLAR}proxy_add_x_forwarded_for;
+            proxy_pass http://rancher-upstream;
+            proxy_http_version 1.1;
+            proxy_set_header Upgrade $${DOLLAR}http_upgrade;
+            proxy_set_header Connection "upgrade";
+            proxy_read_timeout 900s;
+          }
+        }
+        server {
+          listen 80;
+          server_name rancher.$${DSWB_DOMAIN};
+          return 301 https://$${DOLLAR}server_name$${DOLLAR}request_uri;
+        }
+      SSL_CONF: |
+        ssl_protocols TLSv1 TLSv1.1 TLSv1.2;
+        ssl_prefer_server_ciphers on;
+        ssl_ciphers "EECDH+AESGCM:EDH+AESGCM:AES256+EECDH:AES256+EDH";
+        ssl_session_cache shared:SSL:10m;
+        ssl_session_timeout 5m;
+        ssl_ecdh_curve secp384r1;
+        ssl_session_tickets off;
+        ssl_stapling on;
+        ssl_stapling_verify on;
+        add_header Strict-Transport-Security "max-age=63072000; includeSubdomains; preload";
+        add_header X-Frame-Options           DENY;
+        add_header X-Content-Type-Options    nosniff;
+        add_header X-XSS-Protection          "1; mode=block";
+        ssl_dhparam         /etc/nginx/ssl/dhparam.pem;
+        ssl_certificate     /etc/nginx/ssl/certificate-bundle.pem;
+        ssl_certificate_key /etc/nginx/ssl/private-key.pem;
+    command:
+      - bash
+      - -c
+      - |
+        set -e
+        mkdir -p /etc/nginx/conf.d /etc/nginx/ssl
+        echo -e "$$DHPARAM" > /etc/nginx/ssl/dhparam.pem
+        echo -e "$$CERTIFICATE_BUNDLE" > /etc/nginx/ssl/certificate-bundle.pem
+        echo -e "$$PRIVATE_KEY" > /etc/nginx/ssl/private-key.pem
+        chmod 400 /etc/nginx/ssl/*.pem
+        echo "$$SSL_CONF" > /etc/nginx/ssl/ssl.conf
+        echo "$$RANCHER_TEMPLATE" | envsubst > /etc/nginx/conf.d/default.conf
+        nginx -g 'daemon off;'
+    links:
+      - rancher
+    depends_on:
+      - rancher
+  rancher:
+    image: rancher/server:v1.1.4
+    restart: always
+    env_file: env
+    environment:
+      - CATTLE_DB_CATTLE_MYSQL_HOST=db
+      - CATTLE_DB_CATTLE_MYSQL_PORT=3306
+      - CATTLE_DB_CATTLE_MYSQL_NAME=rancher
+      - CATTLE_DB_CATTLE_USERNAME=rancher
+    links:
+      - db
+    depends_on:
+      - db
+  db:
+    image: mysql:5
+    restart: always
+    env_file: env
+    environment:
+      - MYSQL_DATABASE=rancher
+      - MYSQL_USER=rancher
+      - MYSQL_ALLOW_EMPTY_PASSWORD=no
+    volumes:
+      - db-data:/var/lib/mysql
