@@ -53,6 +53,12 @@ Simple Rancher deployment for DSWB.
       openssl rand -base64 16
       ```
 
+1.  Reset permissions for the `env` file.
+
+    ```shell
+    chmod 400 env
+    ```
+
 ## Deploy
 
 1.  Change directory into Gumby's `dswb-rancher` cluster folder and source `.env`.
