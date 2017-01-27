@@ -4,7 +4,7 @@ volumes:
 services:
   proxy:
     image: nginx:stable
-    restart: always
+    restart: unless-stopped
     ports:
       - "80:80"
       - "443:443"
@@ -72,7 +72,7 @@ services:
       - rancher
   rancher:
     image: rancher/server:v1.1.4
-    restart: always
+    restart: unless-stopped
     env_file: env
     environment:
       - CATTLE_DB_CATTLE_MYSQL_HOST=db
@@ -85,7 +85,7 @@ services:
       - db
   db:
     image: mysql:5
-    restart: always
+    restart: unless-stopped
     env_file: env
     environment:
       - MYSQL_DATABASE=rancher
